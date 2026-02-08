@@ -1137,7 +1137,7 @@
 
         // Network Monitoring
         let networkQuality = 'good';
-        const API_BASE = 'http://localhost:8000';
+        const API_BASE = 'https://ai-audio-only-interview.onrender.com';
 
         async function checkNetwork() {
             const start = Date.now();
@@ -1213,7 +1213,7 @@
         let sharedMicStream = null; // Single shared mic stream for all recordings
 
         const SAMPLE_RATE = 24000;
-        const WS_URL = 'ws://localhost:8000/ws/interview';
+        const WS_URL = 'wss://ai-audio-only-interview.onrender.com/ws/interview';
 
         // Start Audio Recording (uses sharedMicStream)
         async function startAudioRecording() {
