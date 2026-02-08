@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from dotenv import load_dotenv
@@ -489,6 +489,85 @@ async def health_check():
         "status": "healthy",
         "active_connections": stats['active_connections'],
         "uptime": stats['uptime_formatted']
+    }
+
+# ============================================================
+# SPEED TEST API (Business Reusable)
+# ============================================================
+
+# Store speed test results for analytics
+speed_test_results = []
+
+@app.get("/api/speed-test/download")
+async def speed_test_download(bytes: int = 100000):
+    """
+    Serve binary data for speed test.
+    Client downloads this and measures time to calculate bandwidth.
+    Args:
+        bytes: Size of test data (default 100KB, max 1MB)
+    """
+    # Limit max size to 1MB to prevent abuse
+    size = min(bytes, 1000000)
+    # Generate random bytes for download
+    data = os.urandom(size)
+    
+    return Response(
+        content=data,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Length": str(size),
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "X-Speed-Test": "true"
+        }
+    )
+
+@app.post("/api/speed-test/report")
+async def speed_test_report(
+    speed_mbps: float,
+    quality: str = "unknown",
+    user_agent: str = None
+):
+    """
+    Report speed test result for analytics.
+    Args:
+        speed_mbps: Measured download speed in Mbps
+        quality: Network quality (good/fair/poor)
+        user_agent: Client user agent
+    """
+    result = {
+        "timestamp": datetime.now().isoformat(),
+        "speed_mbps": speed_mbps,
+        "quality": quality,
+        "user_agent": user_agent
+    }
+    speed_test_results.append(result)
+    
+    # Keep only last 1000 results in memory
+    if len(speed_test_results) > 1000:
+        speed_test_results.pop(0)
+    
+    logger.info(f"Speed test reported: {speed_mbps:.1f} Mbps ({quality})")
+    return {"status": "recorded", "speed_mbps": speed_mbps}
+
+@app.get("/api/speed-test/stats")
+async def speed_test_stats():
+    """
+    Get speed test analytics (last 24 hours summary).
+    """
+    if not speed_test_results:
+        return {"count": 0, "avg_speed": 0, "min_speed": 0, "max_speed": 0}
+    
+    speeds = [r["speed_mbps"] for r in speed_test_results]
+    return {
+        "count": len(speeds),
+        "avg_speed": round(sum(speeds) / len(speeds), 2),
+        "min_speed": round(min(speeds), 2),
+        "max_speed": round(max(speeds), 2),
+        "quality_distribution": {
+            "good": sum(1 for r in speed_test_results if r["quality"] == "good"),
+            "fair": sum(1 for r in speed_test_results if r["quality"] == "fair"),
+            "poor": sum(1 for r in speed_test_results if r["quality"] == "poor")
+        }
     }
 
 # ============================================================

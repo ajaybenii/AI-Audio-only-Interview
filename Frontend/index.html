@@ -1162,15 +1162,15 @@
         let lastMeasuredSpeed = null; // Store accurate speed from real test
         const API_BASE = 'https://ai-audio-only-interview.onrender.com';
 
-        // Real speed test using Cloudflare CDN (runs once at page load for accuracy)
+        // Real speed test using our backend API (runs at page load for accuracy)
         async function realSpeedTest() {
             const bars = document.getElementById('networkBars');
             const text = document.getElementById('networkSpeed');
             text.textContent = 'Testing...';
 
             try {
-                // Download ~100KB file from Cloudflare CDN to measure actual speed
-                const testUrl = 'https://speed.cloudflare.com/__down?bytes=100000';
+                // Download 100KB from our backend to measure actual speed
+                const testUrl = `${API_BASE}/api/speed-test/download?bytes=100000`;
                 const startTime = performance.now();
 
                 const response = await fetch(testUrl, { cache: 'no-store' });
@@ -1184,10 +1184,24 @@
                 lastMeasuredSpeed = speedMbps;
                 updateNetworkDisplay(speedMbps, bars, text);
 
+                // Report speed to backend for analytics (fire and forget)
+                reportSpeedTest(speedMbps, networkQuality);
+
             } catch (e) {
-                console.log('Cloudflare speed test failed, using Navigator API');
+                console.log('Backend speed test failed, using Navigator API');
                 // Fallback to Navigator API
                 checkNetwork();
+            }
+        }
+
+        // Report speed test result to backend for analytics
+        async function reportSpeedTest(speedMbps, quality) {
+            try {
+                await fetch(`${API_BASE}/api/speed-test/report?speed_mbps=${speedMbps.toFixed(2)}&quality=${quality}`, {
+                    method: 'POST'
+                });
+            } catch (e) {
+                // Silent fail - analytics is optional
             }
         }
 
