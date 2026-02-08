@@ -698,6 +698,28 @@
             }
         }
 
+        @keyframes fadeInOut {
+            0% {
+                opacity: 0;
+                transform: translateX(-50%) translateY(-5px);
+            }
+
+            15% {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+
+            85% {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+
+            100% {
+                opacity: 0;
+                transform: translateX(-50%) translateY(-5px);
+            }
+        }
+
         .message.ai {
             background: linear-gradient(135deg, rgba(0, 255, 213, 0.1), rgba(191, 90, 242, 0.1));
             border: 1px solid rgba(0, 255, 213, 0.2);
@@ -1139,6 +1161,42 @@
         let networkQuality = 'good';
         const API_BASE = 'https://ai-audio-only-interview.onrender.com';
 
+        // Show network warning popup
+        function showNetworkWarning() {
+            const networkIndicator = document.getElementById('networkIndicator');
+            if (!networkIndicator) return;
+
+            // Create popup if not exists
+            let popup = document.getElementById('networkWarningPopup');
+            if (!popup) {
+                popup = document.createElement('div');
+                popup.id = 'networkWarningPopup';
+                popup.style.cssText = `
+                    position: absolute;
+                    top: 100%;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: rgba(220, 38, 38, 0.95);
+                    color: white;
+                    padding: 8px 16px;
+                    border-radius: 8px;
+                    font-size: 12px;
+                    font-weight: 500;
+                    white-space: nowrap;
+                    z-index: 1000;
+                    margin-top: 8px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                    animation: fadeInOut 3s ease-in-out forwards;
+                `;
+                popup.textContent = '⚠️ Weak Network Detected';
+                networkIndicator.style.position = 'relative';
+                networkIndicator.appendChild(popup);
+
+                // Remove after 3 seconds
+                setTimeout(() => popup.remove(), 3000);
+            }
+        }
+
         async function checkNetwork() {
             try {
                 const bars = document.getElementById('networkBars');
@@ -1150,7 +1208,6 @@
                 if (connection && connection.downlink) {
                     // downlink is in Mbps
                     const speedMbps = connection.downlink;
-                    const effectiveType = connection.effectiveType; // 4g, 3g, 2g, slow-2g
 
                     let speedText;
                     if (speedMbps >= 10) {
@@ -1161,23 +1218,20 @@
                         speedText = `${(speedMbps * 1000).toFixed(0)} Kbps`;
                     }
 
-                    // Determine quality based on effective type and speed
-                    if (effectiveType === '4g' && speedMbps >= 5) {
-                        networkQuality = 'good';
-                        bars.className = 'network-bars';
-                        text.textContent = `${speedText} • Excellent`;
-                    } else if (effectiveType === '4g' || speedMbps >= 2) {
+                    // Thresholds: <3 Mbps = Poor, 3-9 Mbps = Fair, >9 Mbps = Good
+                    if (speedMbps > 9) {
                         networkQuality = 'good';
                         bars.className = 'network-bars';
                         text.textContent = `${speedText} • Good`;
-                    } else if (effectiveType === '3g' || speedMbps >= 0.5) {
+                    } else if (speedMbps >= 3) {
                         networkQuality = 'fair';
                         bars.className = 'network-bars fair';
                         text.textContent = `${speedText} • Fair`;
                     } else {
                         networkQuality = 'poor';
                         bars.className = 'network-bars poor';
-                        text.textContent = `${speedText} • Slow`;
+                        text.textContent = `${speedText} • Poor`;
+                        showNetworkWarning();
                         if (isActive && ws?.readyState === WebSocket.OPEN && !networkWarned) {
                             networkWarned = true;
                             sendSystemMessage('[SYSTEM: User network is POOR - slow connection detected]');
@@ -1190,22 +1244,19 @@
                     await res.json();
                     const latency = Date.now() - start;
 
-                    if (latency < 150) {
-                        networkQuality = 'good';
-                        bars.className = 'network-bars';
-                        text.textContent = 'Connected • Excellent';
-                    } else if (latency < 300) {
+                    if (latency < 200) {
                         networkQuality = 'good';
                         bars.className = 'network-bars';
                         text.textContent = 'Connected • Good';
-                    } else if (latency < 600) {
+                    } else if (latency < 500) {
                         networkQuality = 'fair';
                         bars.className = 'network-bars fair';
                         text.textContent = 'Connected • Fair';
                     } else {
                         networkQuality = 'poor';
                         bars.className = 'network-bars poor';
-                        text.textContent = 'Connected • Slow';
+                        text.textContent = 'Connected • Poor';
+                        showNetworkWarning();
                         if (isActive && ws?.readyState === WebSocket.OPEN && !networkWarned) {
                             networkWarned = true;
                             sendSystemMessage('[SYSTEM: User network is POOR - high latency detected]');
@@ -1216,6 +1267,7 @@
                 document.getElementById('networkSpeed').textContent = 'Offline';
                 document.getElementById('networkBars').className = 'network-bars poor';
                 networkQuality = 'poor';
+                showNetworkWarning();
             }
         }
 
