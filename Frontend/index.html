@@ -1159,7 +1159,65 @@
 
         // Network Monitoring
         let networkQuality = 'good';
+        let lastMeasuredSpeed = null; // Store accurate speed from real test
         const API_BASE = 'https://ai-audio-only-interview.onrender.com';
+
+        // Real speed test using Cloudflare CDN (runs once at page load for accuracy)
+        async function realSpeedTest() {
+            const bars = document.getElementById('networkBars');
+            const text = document.getElementById('networkSpeed');
+            text.textContent = 'Testing...';
+
+            try {
+                // Download ~100KB file from Cloudflare CDN to measure actual speed
+                const testUrl = 'https://speed.cloudflare.com/__down?bytes=100000';
+                const startTime = performance.now();
+
+                const response = await fetch(testUrl, { cache: 'no-store' });
+                const data = await response.arrayBuffer();
+
+                const endTime = performance.now();
+                const durationSec = (endTime - startTime) / 1000;
+                const fileSizeBits = data.byteLength * 8;
+                const speedMbps = (fileSizeBits / durationSec) / 1000000;
+
+                lastMeasuredSpeed = speedMbps;
+                updateNetworkDisplay(speedMbps, bars, text);
+
+            } catch (e) {
+                console.log('Cloudflare speed test failed, using Navigator API');
+                // Fallback to Navigator API
+                checkNetwork();
+            }
+        }
+
+        // Update network display based on speed
+        function updateNetworkDisplay(speedMbps, bars, text) {
+            let speedText;
+            if (speedMbps >= 10) {
+                speedText = `${speedMbps.toFixed(0)} Mbps`;
+            } else if (speedMbps >= 1) {
+                speedText = `${speedMbps.toFixed(1)} Mbps`;
+            } else {
+                speedText = `${(speedMbps * 1000).toFixed(0)} Kbps`;
+            }
+
+            // Thresholds: <3 Mbps = Poor, 3-9 Mbps = Fair, >9 Mbps = Good
+            if (speedMbps > 9) {
+                networkQuality = 'good';
+                bars.className = 'network-bars';
+                text.textContent = `${speedText} • Good`;
+            } else if (speedMbps >= 3) {
+                networkQuality = 'fair';
+                bars.className = 'network-bars fair';
+                text.textContent = `${speedText} • Fair`;
+            } else {
+                networkQuality = 'poor';
+                bars.className = 'network-bars poor';
+                text.textContent = `${speedText} • Poor`;
+                showNetworkWarning();
+            }
+        }
 
         // Show network warning popup
         function showNetworkWarning() {
@@ -1271,8 +1329,10 @@
             }
         }
 
-        checkNetwork();
-        setInterval(checkNetwork, 5000);
+        // Initial accurate speed test at page load
+        realSpeedTest();
+        // Then continuous monitoring every 10 seconds (less aggressive)
+        setInterval(checkNetwork, 10000);
 
         // Main Interview Logic
         let ws = null, videoInterval = null, audioContext = null, playbackContext = null;
