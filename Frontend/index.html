@@ -1140,31 +1140,53 @@
         const API_BASE = 'https://ai-audio-only-interview.onrender.com';
 
         async function checkNetwork() {
-            const start = Date.now();
             try {
+                // Measure download speed by fetching a known endpoint
+                const start = Date.now();
                 const res = await fetch(`${API_BASE}/api/network-info`, { cache: 'no-store' });
                 const data = await res.json();
-                const latency = Date.now() - start;
+                const duration = (Date.now() - start) / 1000; // seconds
+
+                // Estimate response size (~200 bytes for JSON response)
+                const responseSize = JSON.stringify(data).length;
+                const speedBps = (responseSize * 8) / duration; // bits per second
+                const speedKbps = speedBps / 1000;
+                const speedMbps = speedKbps / 1000;
 
                 const bars = document.getElementById('networkBars');
                 const text = document.getElementById('networkSpeed');
 
-                if (latency < 200) {
+                // Format speed display
+                let speedText;
+                if (speedMbps >= 1) {
+                    speedText = `${speedMbps.toFixed(1)} Mbps`;
+                } else if (speedKbps >= 1) {
+                    speedText = `${speedKbps.toFixed(0)} Kbps`;
+                } else {
+                    speedText = `${(speedBps / 8).toFixed(0)} B/s`;
+                }
+
+                // Determine quality based on estimated speed
+                if (speedMbps >= 2) {
                     networkQuality = 'good';
                     bars.className = 'network-bars';
-                    text.textContent = `${latency}ms • Good`;
-                } else if (latency < 500) {
+                    text.textContent = `${speedText} • Excellent`;
+                } else if (speedMbps >= 0.5) {
+                    networkQuality = 'good';
+                    bars.className = 'network-bars';
+                    text.textContent = `${speedText} • Good`;
+                } else if (speedKbps >= 100) {
                     networkQuality = 'fair';
                     bars.className = 'network-bars fair';
-                    text.textContent = `${latency}ms • Fair`;
+                    text.textContent = `${speedText} • Fair`;
                 } else {
                     networkQuality = 'poor';
                     bars.className = 'network-bars poor';
-                    text.textContent = `${latency}ms • Poor`;
+                    text.textContent = `${speedText} • Slow`;
                     // Notify AI about poor network (only once per poor detection)
                     if (isActive && ws?.readyState === WebSocket.OPEN && !networkWarned) {
                         networkWarned = true;
-                        sendSystemMessage('[SYSTEM: User network is POOR - high latency detected]');
+                        sendSystemMessage('[SYSTEM: User network is POOR - slow connection detected]');
                     }
                 }
             } catch (e) {
