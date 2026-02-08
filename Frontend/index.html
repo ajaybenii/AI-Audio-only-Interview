@@ -1141,52 +1141,75 @@
 
         async function checkNetwork() {
             try {
-                // Measure download speed by fetching a known endpoint
-                const start = Date.now();
-                const res = await fetch(`${API_BASE}/api/network-info`, { cache: 'no-store' });
-                const data = await res.json();
-                const duration = (Date.now() - start) / 1000; // seconds
-
-                // Estimate response size (~200 bytes for JSON response)
-                const responseSize = JSON.stringify(data).length;
-                const speedBps = (responseSize * 8) / duration; // bits per second
-                const speedKbps = speedBps / 1000;
-                const speedMbps = speedKbps / 1000;
-
                 const bars = document.getElementById('networkBars');
                 const text = document.getElementById('networkSpeed');
 
-                // Format speed display
-                let speedText;
-                if (speedMbps >= 1) {
-                    speedText = `${speedMbps.toFixed(1)} Mbps`;
-                } else if (speedKbps >= 1) {
-                    speedText = `${speedKbps.toFixed(0)} Kbps`;
-                } else {
-                    speedText = `${(speedBps / 8).toFixed(0)} B/s`;
-                }
+                // Use Navigator Connection API (Chrome/Edge) for actual bandwidth
+                const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
 
-                // Determine quality based on estimated speed
-                if (speedMbps >= 2) {
-                    networkQuality = 'good';
-                    bars.className = 'network-bars';
-                    text.textContent = `${speedText} • Excellent`;
-                } else if (speedMbps >= 0.5) {
-                    networkQuality = 'good';
-                    bars.className = 'network-bars';
-                    text.textContent = `${speedText} • Good`;
-                } else if (speedKbps >= 100) {
-                    networkQuality = 'fair';
-                    bars.className = 'network-bars fair';
-                    text.textContent = `${speedText} • Fair`;
+                if (connection && connection.downlink) {
+                    // downlink is in Mbps
+                    const speedMbps = connection.downlink;
+                    const effectiveType = connection.effectiveType; // 4g, 3g, 2g, slow-2g
+
+                    let speedText;
+                    if (speedMbps >= 10) {
+                        speedText = `${speedMbps.toFixed(0)} Mbps`;
+                    } else if (speedMbps >= 1) {
+                        speedText = `${speedMbps.toFixed(1)} Mbps`;
+                    } else {
+                        speedText = `${(speedMbps * 1000).toFixed(0)} Kbps`;
+                    }
+
+                    // Determine quality based on effective type and speed
+                    if (effectiveType === '4g' && speedMbps >= 5) {
+                        networkQuality = 'good';
+                        bars.className = 'network-bars';
+                        text.textContent = `${speedText} • Excellent`;
+                    } else if (effectiveType === '4g' || speedMbps >= 2) {
+                        networkQuality = 'good';
+                        bars.className = 'network-bars';
+                        text.textContent = `${speedText} • Good`;
+                    } else if (effectiveType === '3g' || speedMbps >= 0.5) {
+                        networkQuality = 'fair';
+                        bars.className = 'network-bars fair';
+                        text.textContent = `${speedText} • Fair`;
+                    } else {
+                        networkQuality = 'poor';
+                        bars.className = 'network-bars poor';
+                        text.textContent = `${speedText} • Slow`;
+                        if (isActive && ws?.readyState === WebSocket.OPEN && !networkWarned) {
+                            networkWarned = true;
+                            sendSystemMessage('[SYSTEM: User network is POOR - slow connection detected]');
+                        }
+                    }
                 } else {
-                    networkQuality = 'poor';
-                    bars.className = 'network-bars poor';
-                    text.textContent = `${speedText} • Slow`;
-                    // Notify AI about poor network (only once per poor detection)
-                    if (isActive && ws?.readyState === WebSocket.OPEN && !networkWarned) {
-                        networkWarned = true;
-                        sendSystemMessage('[SYSTEM: User network is POOR - slow connection detected]');
+                    // Fallback: Check server connectivity and show status
+                    const start = Date.now();
+                    const res = await fetch(`${API_BASE}/api/network-info`, { cache: 'no-store' });
+                    await res.json();
+                    const latency = Date.now() - start;
+
+                    if (latency < 150) {
+                        networkQuality = 'good';
+                        bars.className = 'network-bars';
+                        text.textContent = 'Connected • Excellent';
+                    } else if (latency < 300) {
+                        networkQuality = 'good';
+                        bars.className = 'network-bars';
+                        text.textContent = 'Connected • Good';
+                    } else if (latency < 600) {
+                        networkQuality = 'fair';
+                        bars.className = 'network-bars fair';
+                        text.textContent = 'Connected • Fair';
+                    } else {
+                        networkQuality = 'poor';
+                        bars.className = 'network-bars poor';
+                        text.textContent = 'Connected • Slow';
+                        if (isActive && ws?.readyState === WebSocket.OPEN && !networkWarned) {
+                            networkWarned = true;
+                            sendSystemMessage('[SYSTEM: User network is POOR - high latency detected]');
+                        }
                     }
                 }
             } catch (e) {
